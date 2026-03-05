@@ -21,6 +21,14 @@ openclaw onboard --auth-choice aiping-api-key
 openclaw onboard --auth-choice aiping-api-key --aiping-api-key "$AIPING_API_KEY"
 ```
 
+When you use the interactive `openclaw onboard` / `openclaw configure` flow,
+OpenClaw now provides AIPing routing presets directly in the wizard:
+
+- Balanced (default)
+- Low latency (`:latency`)
+- High throughput (`:throughput`)
+- Lowest input price (`:input_price`)
+
 ## Config snippet
 
 ```json5
