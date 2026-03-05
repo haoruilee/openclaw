@@ -11,6 +11,7 @@ title: "AIPing"
 AIPing provides an OpenAI-compatible API endpoint at `https://aiping.cn/api/v1`.
 You can configure it in OpenClaw like other API-key providers (for example
 OpenAI or Moonshot).
+Get your API key from [AIPing API Key page](https://aiping.cn/user/apikey).
 
 ## CLI setup
 
