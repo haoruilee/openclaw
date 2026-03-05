@@ -514,6 +514,13 @@ describe("applyAuthChoice", () => {
       modelPrefix: "qianfan/",
     },
     {
+      authChoice: "aiping-api-key",
+      tokenProvider: "aiping",
+      profileId: "aiping:default",
+      provider: "aiping",
+      modelPrefix: "aiping/",
+    },
+    {
       authChoice: "synthetic-api-key",
       tokenProvider: "synthetic",
       profileId: "synthetic:default",
@@ -1320,6 +1327,7 @@ describe("resolvePreferredProviderForAuthChoice", () => {
       { authChoice: "github-copilot" as const, expectedProvider: "github-copilot" },
       { authChoice: "qwen-portal" as const, expectedProvider: "qwen-portal" },
       { authChoice: "mistral-api-key" as const, expectedProvider: "mistral" },
+      { authChoice: "aiping-api-key" as const, expectedProvider: "aiping" },
       { authChoice: "unknown" as AuthChoice, expectedProvider: undefined },
     ] as const;
     for (const scenario of scenarios) {

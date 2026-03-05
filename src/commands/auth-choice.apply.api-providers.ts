@@ -20,6 +20,8 @@ import {
   applyAuthProfileConfig,
   applyCloudflareAiGatewayConfig,
   applyCloudflareAiGatewayProviderConfig,
+  applyAipingConfig,
+  applyAipingProviderConfig,
   applyKilocodeConfig,
   applyKilocodeProviderConfig,
   applyQianfanConfig,
@@ -49,6 +51,7 @@ import {
   applyZaiConfig,
   applyZaiProviderConfig,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
+  AIPING_DEFAULT_MODEL_REF,
   KILOCODE_DEFAULT_MODEL_REF,
   LITELLM_DEFAULT_MODEL_REF,
   QIANFAN_DEFAULT_MODEL_REF,
@@ -61,6 +64,7 @@ import {
   VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF,
   XIAOMI_DEFAULT_MODEL_REF,
   setCloudflareAiGatewayConfig,
+  setAipingApiKey,
   setQianfanApiKey,
   setGeminiApiKey,
   setKilocodeApiKey,
@@ -100,6 +104,7 @@ const API_KEY_TOKEN_PROVIDER_AUTH_CHOICE: Record<string, AuthChoice> = {
   opencode: "opencode-zen",
   kilocode: "kilocode-api-key",
   qianfan: "qianfan-api-key",
+  aiping: "aiping-api-key",
 };
 
 const ZAI_AUTH_CHOICE_ENDPOINT: Partial<
@@ -282,6 +287,18 @@ const SIMPLE_API_KEY_PROVIDER_FLOWS: Partial<Record<AuthChoice, SimpleApiKeyProv
       "API key format: bce-v3/ALTAK-...",
     ].join("\n"),
     noteTitle: "QIANFAN",
+  },
+  "aiping-api-key": {
+    provider: "aiping",
+    profileId: "aiping:default",
+    expectedProviders: ["aiping"],
+    envLabel: "AIPING_API_KEY",
+    promptMessage: "Enter AIPing API key",
+    setCredential: setAipingApiKey,
+    defaultModel: AIPING_DEFAULT_MODEL_REF,
+    applyDefaultConfig: applyAipingConfig,
+    applyProviderConfig: applyAipingProviderConfig,
+    noteDefault: AIPING_DEFAULT_MODEL_REF,
   },
   "kilocode-api-key": {
     provider: "kilocode",
