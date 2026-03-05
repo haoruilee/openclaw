@@ -56,3 +56,44 @@ openclaw onboard --auth-choice aiping-api-key --aiping-api-key "$AIPING_API_KEY"
 - Provider env var: `AIPING_API_KEY`
 - Default model ref used by onboarding: `aiping/DeepSeek-V3.2`
 - You can switch to router mode with model `aiping/Auto` if your account enables it.
+
+## AIPing router-param (provider sorting/filtering)
+
+AIPing supports router sorting/filtering in the **model string** using colon syntax:
+
+`model:sort:param1,param2,...`
+
+OpenClaw passes model IDs through as-is for the AIPing provider, so you can use
+this directly in model refs.
+
+Examples (from AIPing docs):
+
+- `DeepSeek-R1:latency`
+- `DeepSeek-R1:throughput:latency<500,input_price<1.0`
+- `MiniMax-M2::only=硅基流动,阿里云百炼`
+- `MiniMax-M2:latency:ignore=移动云,nofallback`
+
+In OpenClaw:
+
+```bash
+openclaw models set "aiping/DeepSeek-R1:latency"
+```
+
+Or pin in config:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "aiping/DeepSeek-R1:latency:latency<500,input_price<1.0" },
+      models: {
+        "aiping/DeepSeek-R1:latency:latency<500,input_price<1.0": { alias: "AIPing Fast" },
+      },
+    },
+  },
+}
+```
+
+Reference:
+
+- [AIPing router-param docs](https://aiping.cn/docs/Features/router-param)
