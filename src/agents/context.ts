@@ -227,7 +227,9 @@ function resolveProviderModelRef(params: {
   }
   const providerRaw = params.provider?.trim();
   if (providerRaw) {
-    return { provider: normalizeProviderId(providerRaw), model: modelRaw };
+    // Keep the exact (lowercased) provider key; callers that need the canonical
+    // alias (e.g. cache key construction) apply normalizeProviderId explicitly.
+    return { provider: providerRaw.toLowerCase(), model: modelRaw };
   }
   const slash = modelRaw.indexOf("/");
   if (slash <= 0) {
