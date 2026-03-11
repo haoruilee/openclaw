@@ -195,39 +195,30 @@ describe("lookupContextTokens", () => {
     expect(result).toBe(200_000);
   });
 
-  it("resolveContextTokensForModel does not pollute cache with synthetic keys; raw OpenRouter entries survive", async () => {
-    // Root concern: applyConfiguredContextWindows must not write
-    // "google/gemini-2.5-pro" from a Google provider config, which would
-    // overwrite the OpenRouter raw entry and corrupt bare-id lookups.
-    // Fix: config overrides are resolved directly from config (not via cache),
-    // so the cache only holds discovery entries. Real callers always pass cfg.
-    mockDiscoveryDeps([{ id: "google/gemini-2.5-pro", contextWindow: 999_000 }]);
-
-    const cfg = {
-      models: {
-        providers: {
-          google: {
-            models: [{ id: "gemini-2.5-pro", contextWindow: 2_000_000 }],
-          },
-        },
+  it("resolveContextTokensForModel: bare key wins over qualified; OpenRouter raw entry not shadowed by Google config", async () => {
+    // applyConfiguredContextWindows writes "gemini-2.5-pro" → 2M (bare key, Google config).
+    // Discovery writes "google/gemini-2.5-pro" → 999k (OpenRouter raw qualified entry).
+    // Lookup order: bare first → finds 2M immediately, never reaching the
+    // OpenRouter raw "google/gemini-2.5-pro" qualified key.
+    mockDiscoveryDeps([{ id: "google/gemini-2.5-pro", contextWindow: 999_000 }], {
+      google: {
+        models: [{ id: "gemini-2.5-pro", contextWindow: 2_000_000 }],
       },
-    };
+    });
 
     const { resolveContextTokensForModel } = await import("./context.js");
     await new Promise((r) => setTimeout(r, 0));
 
-    // Google provider with bare model id + explicit cfg: config direct-scan
-    // returns 2M without touching the cache, so no collision with the
-    // OpenRouter raw "google/gemini-2.5-pro" entry.
+    // Google provider: bare key "gemini-2.5-pro" → 2M (config-written) is found
+    // first; OpenRouter's "google/gemini-2.5-pro" qualified entry is never hit.
     const googleResult = resolveContextTokensForModel({
-      cfg: cfg as never,
       provider: "google",
       model: "gemini-2.5-pro",
     });
     expect(googleResult).toBe(2_000_000);
 
-    // OpenRouter provider with slash model id: no config override → bare cache
-    // lookup returns the raw OpenRouter discovery entry (999k), still 999k.
+    // OpenRouter provider with slash model id: bare lookup "google/gemini-2.5-pro"
+    // → 999k (OpenRouter raw discovery entry, still intact).
     const openrouterResult = resolveContextTokensForModel({
       provider: "openrouter",
       model: "google/gemini-2.5-pro",

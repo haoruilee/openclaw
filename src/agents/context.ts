@@ -322,19 +322,28 @@ export function resolveContextTokensForModel(params: {
     }
   }
 
-  // For bare model ids, also try the provider-qualified cache key so that
-  // discovery entries stored under qualified IDs (e.g. the registry returns
-  // "google-gemini-cli/gemini-3.1-pro-preview") are reachable when the caller
+  // Try bare key first. Bare keys contain the most-recently-written value
+  // (config overrides via applyConfiguredContextWindows run last) and are
+  // always correct for models registered with bare IDs.
+  const bareResult = lookupContextTokens(params.model);
+  if (bareResult !== undefined) {
+    return bareResult;
+  }
+
+  // Bare key was a miss. Try the provider-qualified key as a fallback so that
+  // discovery entries stored under qualified IDs (e.g. "google-gemini-cli/
+  // gemini-3.1-pro-preview" in the registry) are reachable when the caller
   // provides separate provider/model fields. Only attempted for bare model ids
   // (no slash) to avoid double-prefixing slash-containing ids such as
   // OpenRouter's "google/gemini-2.5-pro".
-  const qualifiedKey =
-    ref && !ref.model.includes("/")
-      ? `${normalizeProviderId(ref.provider)}/${ref.model}`
-      : undefined;
-  return (
-    (qualifiedKey ? lookupContextTokens(qualifiedKey) : undefined) ??
-    lookupContextTokens(params.model) ??
-    params.fallbackContextTokens
-  );
+  if (ref && !ref.model.includes("/")) {
+    const qualifiedResult = lookupContextTokens(
+      `${normalizeProviderId(ref.provider)}/${ref.model}`,
+    );
+    if (qualifiedResult !== undefined) {
+      return qualifiedResult;
+    }
+  }
+
+  return params.fallbackContextTokens;
 }
