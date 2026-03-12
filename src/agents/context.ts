@@ -345,30 +345,38 @@ export function resolveContextTokensForModel(params: {
     }
   }
 
-  // Try bare key first. Bare keys contain the most-recently-written value
-  // (config overrides via applyConfiguredContextWindows run last) and are
-  // always correct for models registered with bare IDs.
+  // When provider is explicitly given and the model ID is bare (no slash),
+  // try the provider-qualified cache key BEFORE the bare key.  Discovery
+  // entries are stored under qualified IDs (e.g. "google-gemini-cli/
+  // gemini-3.1-pro-preview → 1M"), while the bare key may hold a cross-
+  // provider minimum (128k).  Returning the qualified entry gives the correct
+  // provider-specific window for /status and session context-token persistence.
+  //
+  // Guard: only when params.provider is explicit (not inferred from a slash in
+  // the model string). For model-only callers (e.g. status.ts log-usage
+  // fallback with model="google/gemini-2.5-pro"), the inferred provider would
+  // construct "google/gemini-2.5-pro" as the qualified key which accidentally
+  // matches OpenRouter's raw discovery entry — the bare lookup is correct there.
+  if (params.provider && ref && !ref.model.includes("/")) {
+    const qualifiedResult = lookupContextTokens(
+      `${normalizeProviderId(ref.provider)}/${ref.model}`,
+    );
+    if (qualifiedResult !== undefined) {
+      return qualifiedResult;
+    }
+  }
+
+  // Bare key fallback.  For model-only calls with slash-containing IDs
+  // (e.g. "google/gemini-2.5-pro") this IS the raw discovery cache key.
   const bareResult = lookupContextTokens(params.model);
   if (bareResult !== undefined) {
     return bareResult;
   }
 
-  // Bare key miss. As a last resort, try the provider-qualified key so that
-  // discovery entries stored under qualified IDs are reachable. The pi-ai
-  // registry can return entries like "google-gemini-cli/gemini-3.1-pro-preview"
-  // for the google-gemini-cli provider; without this fallback, resolving
-  // { provider: "google-gemini-cli", model: "gemini-3.1-pro-preview" } with
-  // no bare-key hit would always miss.
-  //
-  // Collision risk: the same keyspace holds raw slash-containing model IDs
-  // (e.g. OpenRouter's "google/gemini-2.5-pro"). This fallback is only reached
-  // when the bare key misses, which means native discovery for the requested
-  // provider produced no bare entry. In that situation the only available
-  // context-window data is what another provider stored under the same
-  // qualified key — in practice identical (OpenRouter mirrors native limits) —
-  // so returning it is strictly better than falling back to DEFAULT_CONTEXT_TOKENS.
-  // If native discovery IS running, it writes a bare key, and we never reach here.
-  if (ref && !ref.model.includes("/")) {
+  // When provider is implicit, try qualified as a last resort so inferred
+  // provider/model pairs (e.g. model="google-gemini-cli/gemini-3.1-pro")
+  // still find discovery entries stored under that qualified ID.
+  if (!params.provider && ref && !ref.model.includes("/")) {
     const qualifiedResult = lookupContextTokens(
       `${normalizeProviderId(ref.provider)}/${ref.model}`,
     );

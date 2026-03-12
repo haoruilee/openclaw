@@ -195,30 +195,33 @@ describe("lookupContextTokens", () => {
     expect(result).toBe(200_000);
   });
 
-  it("resolveContextTokensForModel: bare key wins over qualified; OpenRouter raw entry not shadowed by Google config", async () => {
-    // applyConfiguredContextWindows writes "gemini-2.5-pro" → 2M (bare key, Google config).
-    // Discovery writes "google/gemini-2.5-pro" → 999k (OpenRouter raw qualified entry).
-    // Lookup order: bare first → finds 2M immediately, never reaching the
-    // OpenRouter raw "google/gemini-2.5-pro" qualified key.
-    mockDiscoveryDeps([{ id: "google/gemini-2.5-pro", contextWindow: 999_000 }], {
-      google: {
-        models: [{ id: "gemini-2.5-pro", contextWindow: 2_000_000 }],
+  it("resolveContextTokensForModel: config direct scan prevents OpenRouter qualified key collision for Google provider", async () => {
+    // When provider is explicitly "google" and cfg has a Google contextWindow
+    // override, the config direct scan returns it before any cache lookup —
+    // so the OpenRouter raw "google/gemini-2.5-pro" qualified entry is never hit.
+    // Real callers (status.summary.ts) always pass cfg when provider is explicit.
+    mockDiscoveryDeps([{ id: "google/gemini-2.5-pro", contextWindow: 999_000 }]);
+
+    const cfg = {
+      models: {
+        providers: {
+          google: { models: [{ id: "gemini-2.5-pro", contextWindow: 2_000_000 }] },
+        },
       },
-    });
+    };
 
     const { resolveContextTokensForModel } = await import("./context.js");
     await new Promise((r) => setTimeout(r, 0));
 
-    // Google provider: bare key "gemini-2.5-pro" → 2M (config-written) is found
-    // first; OpenRouter's "google/gemini-2.5-pro" qualified entry is never hit.
+    // Google with explicit cfg: config direct scan wins before any cache lookup.
     const googleResult = resolveContextTokensForModel({
+      cfg: cfg as never,
       provider: "google",
       model: "gemini-2.5-pro",
     });
     expect(googleResult).toBe(2_000_000);
 
-    // OpenRouter provider with slash model id: bare lookup "google/gemini-2.5-pro"
-    // → 999k (OpenRouter raw discovery entry, still intact).
+    // OpenRouter provider with slash model id: bare lookup finds the raw entry.
     const openrouterResult = resolveContextTokensForModel({
       provider: "openrouter",
       model: "google/gemini-2.5-pro",
@@ -296,5 +299,28 @@ describe("lookupContextTokens", () => {
       model: "gemini-2.5-pro",
     });
     expect(explicitResult).toBe(2_000_000);
+  });
+
+  it("resolveContextTokensForModel: qualified key beats bare min when provider is explicit (original #35976 fix)", async () => {
+    // Regression: when both "gemini-3.1-pro-preview" (bare, min=128k) AND
+    // "google-gemini-cli/gemini-3.1-pro-preview" (qualified, 1M) are in cache,
+    // an explicit-provider call must return the provider-specific qualified value,
+    // not the collided bare minimum.
+    mockDiscoveryDeps([
+      { id: "github-copilot/gemini-3.1-pro-preview", contextWindow: 128_000 },
+      { id: "gemini-3.1-pro-preview", contextWindow: 128_000 },
+      { id: "google-gemini-cli/gemini-3.1-pro-preview", contextWindow: 1_048_576 },
+    ]);
+
+    const { resolveContextTokensForModel } = await import("./context.js");
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Qualified "google-gemini-cli/gemini-3.1-pro-preview" → 1M wins over
+    // bare "gemini-3.1-pro-preview" → 128k (cross-provider minimum).
+    const result = resolveContextTokensForModel({
+      provider: "google-gemini-cli",
+      model: "gemini-3.1-pro-preview",
+    });
+    expect(result).toBe(1_048_576);
   });
 });
