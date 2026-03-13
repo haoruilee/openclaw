@@ -9,7 +9,7 @@ import {
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
 import { icons } from "../icons.ts";
 import { detectTextDirection } from "../text-direction.ts";
-import type { SessionsListResult } from "../types.ts";
+import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
@@ -156,6 +156,57 @@ function renderFallbackIndicator(status: FallbackIndicatorStatus | null | undefi
       ${icon} ${message}
     </div>
   `;
+}
+
+/**
+ * Compact notice shown when context usage reaches 85%+.
+ * Reads totalTokens (current turn context window usage) and contextTokens
+ * (the model's max context window) from the active session row.
+ * Progressively shifts from amber (85%) to red (95%+).
+ */
+function renderContextNotice(
+  session: GatewaySessionRow | undefined,
+  defaultContextTokens: number | null,
+) {
+  // totalTokens = context tokens used in the most recent turn (comparable to contextTokens window).
+  // inputTokens is cumulative across all turns and can exceed the context window size — do not use it.
+  const used = session?.totalTokens ?? 0;
+  const limit = session?.contextTokens ?? defaultContextTokens ?? 0;
+  if (!used || !limit) {
+    return nothing;
+  }
+  const ratio = used / limit;
+  if (ratio < 0.85) {
+    return nothing;
+  }
+  const pct = Math.min(Math.round(ratio * 100), 100);
+  // Lerp from amber (#d97706) at 85% to red (#dc2626) at 95%+
+  const t = Math.min(Math.max((ratio - 0.85) / 0.1, 0), 1);
+  // RGB: amber(217,119,6) → red(220,38,38)
+  const r = Math.round(217 + (220 - 217) * t);
+  const g = Math.round(119 + (38 - 119) * t);
+  const b = Math.round(6 + (38 - 6) * t);
+  const color = `rgb(${r}, ${g}, ${b})`;
+  const bgOpacity = 0.08 + 0.08 * t;
+  const bg = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+  return html`
+    <div class="context-notice" role="status" style="--ctx-color:${color};--ctx-bg:${bg}">
+      <svg class="context-notice__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>${pct}% context used</span>
+      <span class="context-notice__detail">${formatTokensCompact(used)} / ${formatTokensCompact(limit)}</span>
+    </div>
+  `;
+}
+
+/** Format token count compactly (e.g. 128000 → "128k"). */
+function formatTokensCompact(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (n >= 1_000) {
+    return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return String(n);
 }
 
 function generateAttachmentId(): string {
@@ -405,6 +456,7 @@ export function renderChat(props: ChatProps) {
 
       ${renderFallbackIndicator(props.fallbackStatus)}
       ${renderCompactionIndicator(props.compactionStatus)}
+      ${renderContextNotice(activeSession, props.sessions?.defaults?.contextTokens ?? null)}
 
       ${
         props.showNewMessages
