@@ -32,9 +32,14 @@ export function resolveCronStyleNow(cfg: TimeConfigLike, nowMs: number): CronSty
 
 export function appendCronStyleCurrentTimeLine(text: string, cfg: TimeConfigLike, nowMs: number) {
   const base = text.trimEnd();
-  if (!base || base.includes("Current time:")) {
+  if (!base) {
     return base;
   }
   const { timeLine } = resolveCronStyleNow(cfg, nowMs);
+  // Replace any existing "Current time:" line so stale timestamps from a previous
+  // run or from a cached prompt template are always overwritten with the current time.
+  if (base.includes("Current time:")) {
+    return base.replace(/Current time:[^\n]*/g, timeLine);
+  }
   return `${base}\n${timeLine}`;
 }
