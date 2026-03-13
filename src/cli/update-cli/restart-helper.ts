@@ -169,6 +169,8 @@ export async function runRestartScript(scriptPath: string): Promise<void> {
   const child = spawn(file, args, {
     detached: true,
     stdio: "ignore",
+    // Suppress the brief console window that Windows creates for child cmd.exe processes.
+    windowsHide: true,
   });
   child.unref();
 }
