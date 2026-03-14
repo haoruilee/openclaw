@@ -853,6 +853,48 @@ function createZaiToolStreamWrapper(
 }
 
 /**
+ * Create a stream wrapper that converts API-key auth to Bearer token auth.
+ *
+ * Some Anthropic-compatible endpoints (e.g. MiniMax) require
+ * `Authorization: Bearer <key>` instead of Anthropic SDK's default `X-Api-Key`.
+ * This wrapper intercepts the stream call and:
+ *   1. Moves `options.apiKey` to `options.headers["Authorization"]` as Bearer.
+ *   2. Nulls out `X-Api-Key` so the Anthropic SDK does not emit that header.
+ *      (The SDK treats a null header value as an explicit deletion.)
+ *   3. Clears `options.apiKey` so pi-ai passes `apiKey=null` to the client,
+ *      preventing the `X-Api-Key` header from being generated.
+ */
+function createBearerAuthWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    const apiKey = typeof options?.apiKey === "string" ? options.apiKey : undefined;
+    if (!apiKey) {
+      return underlying(model, context, options);
+    }
+    return underlying(model, context, {
+      ...options,
+      // Clear apiKey so the Anthropic client receives apiKey=null and skips X-Api-Key.
+      apiKey: undefined,
+      headers: {
+        ...options?.headers,
+        // Explicitly delete x-api-key (null means "remove" in the Anthropic SDK header merge).
+        "X-Api-Key": null as unknown as string,
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  };
+}
+
+/**
+ * Determine if a provider uses Bearer auth (authHeader: true) for its
+ * anthropic-messages endpoint. Reads the provider config from models.json.
+ */
+function resolveProviderAuthHeader(cfg: OpenClawConfig | undefined, provider: string): boolean {
+  const providers = cfg?.models?.providers ?? {};
+  return providers[provider]?.authHeader === true;
+}
+
+/**
  * Apply extra params (like temperature) to an agent's streamFn.
  * Also adds OpenRouter app attribution headers when using the OpenRouter provider.
  *
@@ -900,6 +942,13 @@ export function applyExtraParamsToAgent(
       `applying Anthropic beta header for ${provider}/${modelId}: ${anthropicBetas.join(",")}`,
     );
     agent.streamFn = createAnthropicBetaHeadersWrapper(agent.streamFn, anthropicBetas);
+  }
+
+  // When authHeader: true, the provider's Anthropic-compatible endpoint expects
+  // Authorization: Bearer rather than x-api-key. Wrap the streamFn to convert auth.
+  if (resolveProviderAuthHeader(cfg, provider)) {
+    log.debug(`applying Bearer auth header wrapper for ${provider}/${modelId}`);
+    agent.streamFn = createBearerAuthWrapper(agent.streamFn);
   }
 
   if (shouldApplySiliconFlowThinkingOffCompat({ provider, modelId, thinkingLevel })) {
