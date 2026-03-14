@@ -853,16 +853,25 @@ function createZaiToolStreamWrapper(
 }
 
 /**
- * Create a stream wrapper that converts API-key auth to Bearer token auth.
+ * Create a stream wrapper that converts API-key auth to Bearer token auth and
+ * strips Anthropic-specific beta headers unsupported by third-party endpoints.
  *
  * Some Anthropic-compatible endpoints (e.g. MiniMax) require
- * `Authorization: Bearer <key>` instead of Anthropic SDK's default `X-Api-Key`.
- * This wrapper intercepts the stream call and:
+ * `Authorization: Bearer <key>` instead of Anthropic SDK's default `X-Api-Key`,
+ * and do not support Anthropic-specific beta features injected by pi-ai
+ * (e.g. `fine-grained-tool-streaming-2025-05-14`, `interleaved-thinking-2025-05-14`).
+ * When these unsupported beta headers are received, MiniMax sends the entire
+ * response as a single SSE chunk rather than incremental token deltas, causing
+ * the TUI to display the response all at once instead of streaming.
+ *
+ * This wrapper intercepts every stream call and:
  *   1. Moves `options.apiKey` to `options.headers["Authorization"]` as Bearer.
  *   2. Nulls out `X-Api-Key` so the Anthropic SDK does not emit that header.
  *      (The SDK treats a null header value as an explicit deletion.)
  *   3. Clears `options.apiKey` so pi-ai passes `apiKey=null` to the client,
  *      preventing the `X-Api-Key` header from being generated.
+ *   4. Nulls out `anthropic-beta` to suppress pi-ai's default beta headers that
+ *      MiniMax does not recognise and which degrade its streaming behaviour.
  */
 function createBearerAuthWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
   const underlying = baseStreamFn ?? streamSimple;
@@ -880,6 +889,11 @@ function createBearerAuthWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
         // Explicitly delete x-api-key (null means "remove" in the Anthropic SDK header merge).
         "X-Api-Key": null as unknown as string,
         Authorization: `Bearer ${apiKey}`,
+        // Suppress pi-ai's default anthropic-beta headers (fine-grained-tool-streaming,
+        // interleaved-thinking) that MiniMax's Anthropic-compat endpoint does not support.
+        // When these are present, MiniMax returns the entire response as a single SSE
+        // chunk instead of token-by-token deltas, breaking streaming in TUI.
+        "anthropic-beta": null as unknown as string,
       },
     });
   };

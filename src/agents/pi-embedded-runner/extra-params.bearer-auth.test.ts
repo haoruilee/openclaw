@@ -41,6 +41,7 @@ const minimaxModel: Model<"anthropic-messages"> = {
   api: "anthropic-messages",
   provider: "minimax",
   id: "MiniMax-M2.5",
+  name: "MiniMax M2.5",
   baseUrl: "https://api.minimax.io/anthropic",
   reasoning: false,
   input: ["text"],
@@ -78,6 +79,9 @@ describe("extra-params: Bearer auth wrapper (authHeader: true)", () => {
     );
     // X-Api-Key should be set to null to explicitly remove it from the Anthropic SDK
     expect((capturedOptions?.headers as Record<string, unknown>)?.["X-Api-Key"]).toBeNull();
+    // anthropic-beta should be suppressed: MiniMax doesn't support fine-grained-tool-streaming
+    // etc. and sending them causes single-chunk responses instead of token-by-token streaming
+    expect((capturedOptions?.headers as Record<string, unknown>)?.["anthropic-beta"]).toBeNull();
   });
 
   it("passes through unchanged when no apiKey is present", () => {
