@@ -658,6 +658,20 @@ export async function onTimer(state: CronServiceState) {
             { jobId: id, jobName: job.name, status: result.status, durationMs },
             "cron: job completed",
           );
+        } else if (result.status === "error") {
+          // executeJobCore can return { status: "error" } without throwing
+          // (e.g. heartbeat returned an unexpected status). Log it here so
+          // the error is always observable, not just when an exception fires.
+          state.deps.log.warn(
+            {
+              jobId: id,
+              jobName: job.name,
+              status: result.status,
+              durationMs,
+              error: result.error,
+            },
+            "cron: job completed with error",
+          );
         }
         return { jobId: id, ...result, startedAt, endedAt };
       } catch (err) {

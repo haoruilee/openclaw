@@ -17,40 +17,55 @@ describe("parseAbsoluteTimeMs", () => {
     expect(result).toBe(Date.parse("2026-01-12T18:00:00Z"));
   });
 
-  it("parses millisecond epoch strings as-is", () => {
-    // 1_714_000_000_000 ms = ~April 25, 2024
-    const result = parseAbsoluteTimeMs("1714000000000");
-    expect(result).toBe(1_714_000_000_000);
-    expect(new Date(result!).getUTCFullYear()).toBe(2024);
-  });
+  describe("digit-width detection (seconds vs milliseconds)", () => {
+    it("promotes 10-digit Unix-seconds strings to milliseconds (current era)", () => {
+      // 1714000000 = April 25, 2024 in Unix seconds (10 digits)
+      const result = parseAbsoluteTimeMs("1714000000");
+      expect(result).toBe(1_714_000_000 * 1000);
+      expect(new Date(result!).getUTCFullYear()).toBe(2024);
+    });
 
-  it("auto-promotes Unix-seconds strings to milliseconds to fix year-58177 bug", () => {
-    // 1_714_000_000 is April 25, 2024 in Unix seconds.
-    // Without the fix, this would be treated as 1714000000 ms = Jan 20, 1970.
-    // With the fix, it should be treated as 1714000000 * 1000 ms = Apr 25, 2024.
-    const result = parseAbsoluteTimeMs("1714000000");
-    expect(result).toBe(1_714_000_000 * 1000);
-    expect(new Date(result!).getUTCFullYear()).toBe(2024);
-  });
+    it("promotes 9-digit Unix-seconds strings to milliseconds", () => {
+      // 999999999 = Sep 9, 2001 (9 digits)
+      const result = parseAbsoluteTimeMs("999999999");
+      expect(result).toBe(999_999_999 * 1000);
+      expect(new Date(result!).getUTCFullYear()).toBe(2001);
+    });
 
-  it("auto-promotes 9-digit Unix-seconds timestamps", () => {
-    // 999999999 seconds = ~Sep 9, 2001
-    const result = parseAbsoluteTimeMs("999999999");
-    expect(result).toBe(999_999_999 * 1000);
-    expect(new Date(result!).getUTCFullYear()).toBe(2001);
-  });
+    it("treats 13-digit values as milliseconds without promotion", () => {
+      // 1714000000000 = April 25, 2024 in milliseconds (13 digits)
+      const result = parseAbsoluteTimeMs("1714000000000");
+      expect(result).toBe(1_714_000_000_000);
+      expect(new Date(result!).getUTCFullYear()).toBe(2024);
+    });
 
-  it("does not multiply already-millisecond values above threshold", () => {
-    // 1_000_000_000_000 ms = exactly the SECONDS_VS_MS_THRESHOLD, treated as ms
-    const result = parseAbsoluteTimeMs("1000000000000");
-    expect(result).toBe(1_000_000_000_000);
-  });
+    it("treats pre-2001 millisecond values correctly (reviewer counterexample)", () => {
+      // 946684800000 = Jan 1, 2000 in milliseconds (12 digits)
+      // The old threshold (1e12) would have misclassified this as seconds → year 31969.
+      // The digit-width test correctly identifies 12 digits as milliseconds.
+      const result = parseAbsoluteTimeMs("946684800000");
+      expect(result).toBe(946_684_800_000);
+      expect(new Date(result!).getUTCFullYear()).toBe(2000);
+    });
 
-  it("does not multiply timestamps clearly above the threshold", () => {
-    const tsMs = Date.parse("2026-06-15T12:00:00Z");
-    const result = parseAbsoluteTimeMs(String(tsMs));
-    expect(result).toBe(tsMs);
-    expect(new Date(result!).getUTCFullYear()).toBe(2026);
+    it("treats 11-digit millisecond values as milliseconds", () => {
+      // 10000000000 = Nov 20, 1970 in ms — 11 digits, unambiguously ms
+      const result = parseAbsoluteTimeMs("10000000000");
+      expect(result).toBe(10_000_000_000);
+    });
+
+    it("treats 12-digit millisecond values as milliseconds", () => {
+      const nowMs = Date.parse("2026-06-15T12:00:00Z"); // 13 digits
+      const result = parseAbsoluteTimeMs(String(nowMs));
+      expect(result).toBe(nowMs);
+      expect(new Date(result!).getUTCFullYear()).toBe(2026);
+    });
+
+    it("falls through for 14+ digit values (implausible epoch)", () => {
+      // 14-digit number is not a valid date string, so Date.parse returns NaN
+      const result = parseAbsoluteTimeMs("12345678901234");
+      expect(result).toBeNull();
+    });
   });
 
   it("returns null for empty string", () => {

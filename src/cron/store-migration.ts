@@ -484,7 +484,13 @@ export function normalizeStoredCronJobs(
         // Emit a warn when an existing (but unrecognized) value is being
         // overwritten so that manual config edits that conflict with the
         // payload kind are observable rather than silently discarded.
-        if (raw.sessionTarget !== undefined && raw.sessionTarget !== null) {
+        // Exclude undefined, null, and "" — those are semantically "not set"
+        // and should not produce a false-positive conflict warning.
+        if (
+          raw.sessionTarget !== undefined &&
+          raw.sessionTarget !== null &&
+          raw.sessionTarget !== ""
+        ) {
           opts?.log?.warn(
             {
               jobId: typeof raw.id === "string" ? raw.id : "unknown",
