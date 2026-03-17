@@ -115,6 +115,7 @@ Docs: https://docs.openclaw.ai
 - Gateway/auth: grant operator.read for device-less token/password auth so CLI and Dashboard can run read RPCs (devices list, status, probe) instead of getting "missing scope: operator.read". Fixes #48167, #46117, #46716, #17095.
 - Gateway/handshake: restore handshake timeout to 10s (was reduced to 3s in #44089) so CLI commands like `openclaw devices list` no longer fail with "gateway closed (1000 normal closure)" on slower systems. (#47103)
 - macOS/exec approvals: harden exec-host request HMAC verification to use a timing-safe compare and keep malformed or truncated signatures fail-closed in focused IPC auth coverage.
+- Gateway/probe: include device identity in authenticated loopback probes so `openclaw status` and probe RPCs get full paired scopes instead of being scope-limited. Only strip identity for literal anonymous probes (opts.auth undefined). (#48805)
 
 ## 2026.3.13
 
