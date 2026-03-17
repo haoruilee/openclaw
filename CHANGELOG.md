@@ -38,8 +38,6 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
-- Gateway/auth: grant operator.read for device-less token/password auth so CLI and Dashboard can run read RPCs (devices list, status, probe) instead of getting "missing scope: operator.read". Fixes #48167, #46117, #46716, #17095.
-- Gateway/handshake: restore handshake timeout to 10s (was reduced to 3s in #44089) so CLI commands like `openclaw devices list` no longer fail with "gateway closed (1000 normal closure)" on slower systems. (#47103)
 - Google auth/Node 25: patch `gaxios` to use native fetch without injecting `globalThis.window`, while translating proxy and mTLS transport settings so Google Vertex and Google Chat auth keep working on Node 25. (#47914) Thanks @pdd-cli.
 - Gateway/startup: load bundled channel plugins from compiled `dist/extensions` entries in built installs, so gateway boot no longer recompiles bundled extension TypeScript on every startup and WhatsApp-class cold starts drop back to seconds instead of tens of seconds or worse. (#47560) Thanks @ngutman.
 - Plugins/context engines: enforce owner-aware context-engine registration on both loader and public SDK paths so plugins cannot spoof privileged ownership, claim the core `legacy` engine id, or overwrite an existing engine id through direct SDK imports. (#47595) Thanks @vincentkoc.
@@ -109,6 +107,8 @@ Docs: https://docs.openclaw.ai
 - Control UI/overview: keep the language dropdown aligned with the persisted locale during dashboard startup so refreshing the page does not fall back to English before locale hydration completes. (#48019) Thanks @git-jxj.
 - Agents/compaction: rerun transcript repair after `session.compact()` so orphaned `tool_result` blocks cannot survive compaction and break later Anthropic requests. (#16095) thanks @claw-sylphx.
 - Agents/compaction: trigger overflow recovery from the tool-result guard once post-compaction context still exceeds the safe threshold, so long tool loops compact before the next model call hard-fails. (#29371) thanks @keshav55.
+- Gateway/auth: grant operator.read for device-less token/password auth so CLI and Dashboard can run read RPCs (devices list, status, probe) instead of getting "missing scope: operator.read". Fixes #48167, #46117, #46716, #17095.
+- Gateway/handshake: restore handshake timeout to 10s (was reduced to 3s in #44089) so CLI commands like `openclaw devices list` no longer fail with "gateway closed (1000 normal closure)" on slower systems. (#47103)
 
 ## 2026.3.13
 
