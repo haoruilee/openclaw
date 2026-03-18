@@ -61,6 +61,8 @@ export type GatewayClientOptions = {
   permissions?: Record<string, boolean>;
   pathEnv?: string;
   deviceIdentity?: DeviceIdentity;
+  /** When true, skip device identity for anonymous loopback probes (no pairing side effects). */
+  skipDeviceIdentity?: boolean;
   minProtocol?: number;
   maxProtocol?: number;
   tlsFingerprint?: string;
@@ -100,7 +102,9 @@ export class GatewayClient {
   constructor(opts: GatewayClientOptions) {
     this.opts = {
       ...opts,
-      deviceIdentity: opts.deviceIdentity ?? loadOrCreateDeviceIdentity(),
+      deviceIdentity: opts.skipDeviceIdentity
+        ? undefined
+        : (opts.deviceIdentity ?? loadOrCreateDeviceIdentity()),
     };
   }
 

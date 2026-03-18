@@ -50,4 +50,30 @@ describe("probeGateway", () => {
     expect(gatewayClientState.options?.scopes).toEqual(["operator.read"]);
     expect(result.ok).toBe(true);
   });
+
+  it("skips device identity for anonymous loopback when auth is effectively empty", async () => {
+    await probeGateway({
+      url: "ws://127.0.0.1:18789",
+      auth: { token: undefined, password: undefined },
+      timeoutMs: 1_000,
+    });
+    expect(gatewayClientState.options?.skipDeviceIdentity).toBe(true);
+  });
+
+  it("skips device identity for anonymous loopback when auth is undefined", async () => {
+    await probeGateway({
+      url: "ws://localhost:18789",
+      timeoutMs: 1_000,
+    });
+    expect(gatewayClientState.options?.skipDeviceIdentity).toBe(true);
+  });
+
+  it("does not skip device identity when auth has token on loopback", async () => {
+    await probeGateway({
+      url: "ws://127.0.0.1:18789",
+      auth: { token: "secret" },
+      timeoutMs: 1_000,
+    });
+    expect(gatewayClientState.options?.skipDeviceIdentity).toBeFalsy();
+  });
 });

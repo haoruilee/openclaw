@@ -598,8 +598,12 @@ export function attachGatewayWsMessageHandler(params: {
           });
           close(1008, truncateCloseReason(authMessage));
         };
+        // Only retain self-declared scopes for device-less token/password/tailscale auth.
+        // Trusted-proxy auth must not get read scope; deployments rely on scope stripping.
+        const sharedSecretAuthOk =
+          authMethod === "token" || authMethod === "password" || authMethod === "tailscale";
         const clearUnboundScopes = () => {
-          if (scopes.length > 0 && !controlUiAuthPolicy.allowBypass && !sharedAuthOk) {
+          if (scopes.length > 0 && !controlUiAuthPolicy.allowBypass && !sharedSecretAuthOk) {
             scopes = [];
             connectParams.scopes = scopes;
           }

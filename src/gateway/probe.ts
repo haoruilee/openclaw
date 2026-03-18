@@ -4,11 +4,21 @@ import type { SystemPresence } from "../infra/system-presence.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { GatewayClient } from "./client.js";
 import { READ_SCOPE } from "./method-scopes.js";
+import { isLoopbackHost } from "./net.js";
 
 export type GatewayProbeAuth = {
   token?: string;
   password?: string;
 };
+
+function isEffectivelyEmptyAuth(auth: GatewayProbeAuth | undefined): boolean {
+  if (auth === undefined) {
+    return true;
+  }
+  const hasToken = typeof auth.token === "string" && auth.token.trim().length > 0;
+  const hasPassword = typeof auth.password === "string" && auth.password.trim().length > 0;
+  return !hasToken && !hasPassword;
+}
 
 export type GatewayProbeClose = {
   code: number;
@@ -51,6 +61,17 @@ export async function probeGateway(opts: {
       resolve({ url: opts.url, ...result });
     };
 
+    // Disable device identity for anonymous loopback probes to preserve legacy
+    // "no-setup" local status behavior (no pairing/auth side effects).
+    const hostname = (() => {
+      try {
+        return new URL(opts.url).hostname;
+      } catch {
+        return "";
+      }
+    })();
+    const anonymousLoopback = isLoopbackHost(hostname) && isEffectivelyEmptyAuth(opts.auth);
+
     const client = new GatewayClient({
       url: opts.url,
       token: opts.auth?.token,
@@ -60,6 +81,7 @@ export async function probeGateway(opts: {
       clientVersion: "dev",
       mode: GATEWAY_CLIENT_MODES.PROBE,
       instanceId,
+      skipDeviceIdentity: anonymousLoopback,
       onConnectError: (err) => {
         connectError = formatErrorMessage(err);
       },

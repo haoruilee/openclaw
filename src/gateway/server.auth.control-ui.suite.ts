@@ -43,7 +43,8 @@ export function registerControlUiAndPairingSuite(): void {
       role: "operator",
       withUnpairedNodeDevice: false,
       expectedOk: true,
-      expectStatusChecks: true,
+      // Trusted-proxy device-less gets zero scopes (no read); status/health require operator.read.
+      expectStatusChecks: false,
     },
     {
       name: "rejects trusted-proxy control ui node role without device identity",
