@@ -297,8 +297,12 @@ function handleTerminalChatEvent(
   // requiring a page reload or a /new command (fixes #45034, #45230, #45192).
   // No overrides: respect whatever activeMinutes/limit filters the user has set
   // in the Sessions UI rather than silently narrowing to a hard-coded 120-min window.
+  // Pin the selected session so a refresh after a turn in another session does not
+  // drop it from the list (which would hide the context notice).
   if (state === "final") {
-    void loadSessions(host as unknown as OpenClawApp);
+    void loadSessions(host as unknown as OpenClawApp, {
+      includeSessionKey: host.sessionKey,
+    });
   }
   // Reload history when tools were used so the persisted tool results
   // replace the now-cleared streaming state.

@@ -268,7 +268,12 @@ function renderContextNotice(
   // Treating absent as stale is the safe default: it keeps the warning visible
   // for rows that predate the totalTokensFresh field rather than silently hiding it.
   const isFresh = session?.totalTokensFresh === true;
-  const used = isFresh ? (session?.totalTokens ?? 0) : Math.min(session?.inputTokens ?? 0, limit);
+  // Clamp used to limit in both paths: backend keeps totalTokens unclamped for accuracy
+  // (see src/agents/usage.ts), so when totalTokens exceeds contextTokens we must cap
+  // for display to avoid impossible ratios (e.g. 250k / 200k).
+  const used = isFresh
+    ? Math.min(session?.totalTokens ?? 0, limit)
+    : Math.min(session?.inputTokens ?? 0, limit);
 
   if (!used) {
     return nothing;

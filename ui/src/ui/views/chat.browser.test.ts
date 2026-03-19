@@ -211,4 +211,40 @@ describe("chat context notice", () => {
     expect(detail).not.toContain("550");
     expect(detail).toContain("200k");
   });
+
+  it("clamps fresh totalTokens when exceeding contextTokens", async () => {
+    // Backend keeps totalTokens unclamped; display must cap to avoid impossible ratios.
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          sessions: {
+            ts: 0,
+            path: "",
+            count: 1,
+            defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
+            sessions: [
+              {
+                key: "main",
+                kind: "direct",
+                updatedAt: null,
+                totalTokens: 250_000,
+                totalTokensFresh: true,
+                contextTokens: 200_000,
+              },
+            ],
+          },
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const notice = container.querySelector(".context-notice");
+    expect(notice).not.toBeNull();
+    const detail = notice?.querySelector(".context-notice__detail")?.textContent ?? "";
+    // Should show "200k / 200k" (capped), not "250k / 200k" (impossible)
+    expect(detail).not.toContain("250");
+    expect(detail).toContain("200k");
+  });
 });
