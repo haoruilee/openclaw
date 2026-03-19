@@ -24,29 +24,22 @@ describe("parseAbsoluteTimeMs", () => {
     expect(new Date(result!).getUTCFullYear()).toBe(2024);
   });
 
-  it("auto-promotes Unix-seconds strings to milliseconds to fix year-58177 bug", () => {
-    // 1_714_000_000 is April 25, 2024 in Unix seconds.
-    // Without the fix, this would be treated as 1714000000 ms = Jan 20, 1970.
-    // With the fix, it should be treated as 1714000000 * 1000 ms = Apr 25, 2024.
-    const result = parseAbsoluteTimeMs("1714000000");
-    expect(result).toBe(1_714_000_000 * 1000);
-    expect(new Date(result!).getUTCFullYear()).toBe(2024);
+  it("rejects compact digit-only timestamps to avoid YYYYMMDDHH vs Unix-seconds ambiguity", () => {
+    // 2026031812 could mean YYYYMMDDHH (2026-03-18 12:00) or Unix seconds (2034).
+    // Promoting would silently schedule wrong. Reject and require ISO-8601.
+    expect(parseAbsoluteTimeMs("2026031812")).toBeNull();
+    expect(parseAbsoluteTimeMs("1714000000")).toBeNull();
+    expect(parseAbsoluteTimeMs("999999999")).toBeNull();
+    expect(parseAbsoluteTimeMs("999999999999")).toBeNull(); // 12 digits also ambiguous
   });
 
-  it("auto-promotes 9-digit Unix-seconds timestamps", () => {
-    // 999999999 seconds = ~Sep 9, 2001
-    const result = parseAbsoluteTimeMs("999999999");
-    expect(result).toBe(999_999_999 * 1000);
-    expect(new Date(result!).getUTCFullYear()).toBe(2001);
-  });
-
-  it("does not multiply already-millisecond values above threshold", () => {
-    // 1_000_000_000_000 ms = exactly the SECONDS_VS_MS_THRESHOLD, treated as ms
+  it("accepts 13+ digit millisecond epoch strings as-is", () => {
+    // 1_000_000_000_000 ms = Sep 9, 2001
     const result = parseAbsoluteTimeMs("1000000000000");
     expect(result).toBe(1_000_000_000_000);
   });
 
-  it("does not multiply timestamps clearly above the threshold", () => {
+  it("parses 13-digit millisecond timestamps for current-era dates", () => {
     const tsMs = Date.parse("2026-06-15T12:00:00Z");
     const result = parseAbsoluteTimeMs(String(tsMs));
     expect(result).toBe(tsMs);
