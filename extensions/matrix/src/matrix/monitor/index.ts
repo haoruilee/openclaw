@@ -25,6 +25,7 @@ import { resolveMatrixMonitorConfig } from "./config.js";
 import { createDirectRoomTracker } from "./direct.js";
 import { registerMatrixMonitorEvents } from "./events.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
+import { createMatrixInboundEventDeduper } from "./inbound-dedupe.js";
 import { createMatrixRoomInfoResolver } from "./room-info.js";
 import { runMatrixStartupMaintenance } from "./startup.js";
 
@@ -136,15 +137,29 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   setActiveMatrixClient(client, auth.accountId);
   let cleanedUp = false;
   let threadBindingManager: { accountId: string; stop: () => void } | null = null;
+  const inboundDeduper = await createMatrixInboundEventDeduper({
+    auth,
+    env: process.env,
+  });
+  const inFlightRoomMessages = new Set<Promise<void>>();
+  const waitForInFlightRoomMessages = async () => {
+    while (inFlightRoomMessages.size > 0) {
+      await Promise.allSettled(Array.from(inFlightRoomMessages));
+    }
+  };
   const cleanup = async () => {
     if (cleanedUp) {
       return;
     }
     cleanedUp = true;
     try {
+      client.stopSyncWithoutPersist();
+      await client.drainPendingDecryptions("matrix monitor shutdown");
+      await waitForInFlightRoomMessages();
       threadBindingManager?.stop();
-    } finally {
+      await inboundDeduper.stop();
       await releaseSharedClientInstance(client, "persist");
+    } finally {
       setActiveMatrixClient(null, auth.accountId);
     }
   };
@@ -184,6 +199,8 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   const textLimit = core.channel.text.resolveTextChunkLimit(cfg, "matrix", account.accountId);
   const mediaMaxMb = opts.mediaMaxMb ?? accountConfig.mediaMaxMb ?? DEFAULT_MEDIA_MAX_MB;
   const mediaMaxBytes = Math.max(1, mediaMaxMb) * 1024 * 1024;
+  const streaming: "partial" | "off" =
+    accountConfig.streaming === true || accountConfig.streaming === "partial" ? "partial" : "off";
   const startupMs = Date.now();
   const startupGraceMs = 0;
   // Cold starts should ignore old room history, but once we have a persisted
@@ -212,6 +229,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     groupPolicy,
     replyToMode,
     threadReplies,
+    streaming,
     dmEnabled,
     dmPolicy,
     textLimit,
@@ -219,11 +237,19 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     startupMs,
     startupGraceMs,
     dropPreStartupMessages,
+    inboundDeduper,
     directTracker,
     getRoomInfo,
     getMemberDisplayName,
     needsRoomAliasesForConfig,
   });
+  const trackRoomMessage = (roomId: string, event: Parameters<typeof handleRoomMessage>[1]) => {
+    const task = Promise.resolve(handleRoomMessage(roomId, event)).finally(() => {
+      inFlightRoomMessages.delete(task);
+    });
+    inFlightRoomMessages.add(task);
+    return task;
+  };
 
   try {
     threadBindingManager = await createMatrixThreadBindingManager({
@@ -243,13 +269,24 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
       cfg,
       client,
       auth,
+      allowFrom,
+      dmEnabled,
+      dmPolicy,
+      readStoreAllowFrom: async () =>
+        await core.channel.pairing
+          .readAllowFromStore({
+            channel: "matrix",
+            env: process.env,
+            accountId: account.accountId,
+          })
+          .catch(() => []),
       directTracker,
       logVerboseMessage,
       warnedEncryptedRooms,
       warnedCryptoMissingRooms,
       logger,
       formatNativeDependencyHint: core.system.formatNativeDependencyHint,
-      onRoomMessage: handleRoomMessage,
+      onRoomMessage: trackRoomMessage,
     });
 
     // Register Matrix thread bindings before the client starts syncing so threaded

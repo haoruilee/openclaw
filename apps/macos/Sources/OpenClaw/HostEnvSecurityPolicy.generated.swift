@@ -16,8 +16,12 @@ enum HostEnvSecurityPolicy {
         "RUBYOPT",
         "BASH_ENV",
         "ENV",
+        "BROWSER",
+        "GIT_EDITOR",
         "GIT_EXTERNAL_DIFF",
         "GIT_EXEC_PATH",
+        "GIT_SEQUENCE_EDITOR",
+        "GIT_TEMPLATE_DIR",
         "SHELL",
         "SHELLOPTS",
         "PS4",
@@ -63,7 +67,24 @@ enum HostEnvSecurityPolicy {
         "OPENSSL_ENGINES",
         "PYTHONSTARTUP",
         "WGETRC",
-        "CURL_HOME"
+        "CURL_HOME",
+        "CLASSPATH",
+        "CGO_CFLAGS",
+        "CGO_LDFLAGS",
+        "GOFLAGS",
+        "CORECLR_PROFILER_PATH",
+        "PHPRC",
+        "PHP_INI_SCAN_DIR",
+        "DENO_DIR",
+        "BUN_CONFIG_REGISTRY",
+        "LUA_PATH",
+        "LUA_CPATH",
+        "GEM_HOME",
+        "GEM_PATH",
+        "BUNDLE_GEMFILE",
+        "COMPOSER_HOME",
+        "XDG_CONFIG_HOME",
+        "AWS_CONFIG_FILE"
     ]
 
     static let blockedOverridePrefixes: [String] = [
