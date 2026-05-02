@@ -117,6 +117,7 @@ export async function enqueueDelivery(
     enqueuedAt: Date.now(),
     channel: params.channel,
     to: params.to,
+    logicalSendKey: params.logicalSendKey,
     accountId: params.accountId,
     payloads: params.payloads,
     threadId: params.threadId,
