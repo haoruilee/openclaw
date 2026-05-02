@@ -50,6 +50,8 @@ export type RouteReplyParams = {
   isGroup?: boolean;
   /** Group or channel identifier for correlation with received events */
   groupId?: string;
+  /** Stable logical send identity for queue-backed direct delivery retries. */
+  logicalSendKey?: string;
 };
 
 export type RouteReplyResult = {
@@ -151,6 +153,7 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
       threadId: resolvedThreadId,
       session: outboundSession,
       abortSignal,
+      logicalSendKey: params.logicalSendKey,
       mirror:
         params.mirror !== false && params.sessionKey
           ? {
