@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReplyPayload } from "../../auto-reply/types.js";
@@ -28,6 +29,8 @@ type DeliveryMirrorPayload = {
 type QueuedDeliveryPayload = {
   channel: Exclude<OutboundChannel, "none">;
   to: string;
+  /** Stable caller-supplied identity for retries of the same logical send. */
+  logicalSendKey?: string;
   accountId?: string;
   /**
    * Original payloads before plugin hooks. On recovery, hooks re-run on these
@@ -78,12 +81,37 @@ export async function ensureQueueDir(stateDir?: string): Promise<string> {
 /** Persist a delivery entry to disk before attempting send. Returns the entry ID. */
 type QueuedDeliveryParams = QueuedDeliveryPayload;
 
+function resolveQueuedDeliveryId(logicalSendKey?: string): string {
+  if (!logicalSendKey) {
+    return generateSecureUuid();
+  }
+  const digest = createHash("sha256").update(logicalSendKey).digest("hex");
+  return `logical-${digest}`;
+}
+
 export async function enqueueDelivery(
   params: QueuedDeliveryParams,
   stateDir?: string,
 ): Promise<string> {
   const queueDir = await ensureQueueDir(stateDir);
-  const id = generateSecureUuid();
+  const id = resolveQueuedDeliveryId(params.logicalSendKey);
+  const filePath = path.join(queueDir, `${id}.json`);
+  if (params.logicalSendKey) {
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (stat.isFile()) {
+        return id;
+      }
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code)
+          : null;
+      if (code !== "ENOENT") {
+        throw err;
+      }
+    }
+  }
   const entry: QueuedDelivery = {
     id,
     enqueuedAt: Date.now(),
@@ -99,7 +127,6 @@ export async function enqueueDelivery(
     mirror: params.mirror,
     retryCount: 0,
   };
-  const filePath = path.join(queueDir, `${id}.json`);
   const tmp = `${filePath}.${process.pid}.tmp`;
   const json = JSON.stringify(entry, null, 2);
   await fs.promises.writeFile(tmp, json, { encoding: "utf-8", mode: 0o600 });
@@ -380,8 +407,11 @@ export { MAX_RETRIES };
 const PERMANENT_ERROR_PATTERNS: readonly RegExp[] = [
   /no conversation reference found/i,
   /chat not found/i,
+  /message is too long/i,
   /user not found/i,
+  /user is deactivated/i,
   /bot was blocked by the user/i,
+  /bot can'?t send messages to bots/i,
   /forbidden: bot was kicked/i,
   /chat_id is empty/i,
   /recipient is not a valid/i,

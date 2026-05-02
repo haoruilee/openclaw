@@ -113,6 +113,31 @@ describe("delivery-queue", () => {
     it("ack is idempotent (no error on missing file)", async () => {
       await expect(ackDelivery("nonexistent-id", tmpDir)).resolves.toBeUndefined();
     });
+
+    it("reuses a stable queue entry id for the same logical send key", async () => {
+      const params = {
+        channel: "telegram" as const,
+        to: "123",
+        logicalSendKey: "send:idem-123",
+        payloads: [{ text: "hello" }],
+      };
+
+      const firstId = await enqueueDelivery(params, tmpDir);
+      const secondId = await enqueueDelivery(params, tmpDir);
+
+      expect(secondId).toBe(firstId);
+
+      const queueDir = path.join(tmpDir, "delivery-queue");
+      const files = fs.readdirSync(queueDir).filter((f) => f.endsWith(".json"));
+      expect(files).toEqual([`${firstId}.json`]);
+
+      const entry = JSON.parse(fs.readFileSync(path.join(queueDir, files[0]), "utf-8"));
+      expect(entry).toMatchObject({
+        id: firstId,
+        logicalSendKey: "send:idem-123",
+        retryCount: 0,
+      });
+    });
   });
 
   describe("failDelivery", () => {
@@ -161,8 +186,11 @@ describe("delivery-queue", () => {
     it.each([
       "No conversation reference found for user:abc",
       "Telegram send failed: chat not found (chat_id=user:123)",
+      "Telegram send failed: 400 Bad Request: message is too long",
       "user not found",
+      "403 Forbidden: user is deactivated",
       "Bot was blocked by the user",
+      "403 Forbidden: bot can't send messages to bots",
       "Forbidden: bot was kicked from the group chat",
       "chat_id is empty",
       "Outbound not configured for channel: msteams",
@@ -386,6 +414,31 @@ describe("delivery-queue", () => {
       expect(result.recovered).toBe(0);
       const remaining = await loadPendingDeliveries(tmpDir);
       expect(remaining).toHaveLength(0);
+      const failedDir = path.join(tmpDir, "delivery-queue", "failed");
+      expect(fs.existsSync(path.join(failedDir, `${id}.json`))).toBe(true);
+      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("permanent error"));
+    });
+
+    it("moves telegram terminal errors to failed/ immediately during recovery", async () => {
+      const id = await enqueueDelivery(
+        {
+          channel: "telegram",
+          to: "123",
+          logicalSendKey: "send:telegram-too-long",
+          payloads: [{ text: "too long" }],
+        },
+        tmpDir,
+      );
+      const deliver = vi
+        .fn()
+        .mockRejectedValue(new Error("400 Bad Request: message is too long"));
+      const log = createLog();
+
+      const { result } = await runRecovery({ deliver, log });
+
+      expect(result.failed).toBe(1);
+      expect(result.recovered).toBe(0);
+      expect((await loadPendingDeliveries(tmpDir)).length).toBe(0);
       const failedDir = path.join(tmpDir, "delivery-queue", "failed");
       expect(fs.existsSync(path.join(failedDir, `${id}.json`))).toBe(true);
       expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("permanent error"));

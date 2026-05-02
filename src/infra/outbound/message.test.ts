@@ -71,6 +71,24 @@ describe("sendMessage", () => {
     );
   });
 
+  it("passes explicit idempotencyKey to outbound delivery for direct sends", async () => {
+    await sendMessage({
+      cfg: {},
+      channel: "telegram",
+      to: "123456",
+      content: "hi",
+      idempotencyKey: "idem-direct-send",
+    });
+
+    expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logicalSendKey: "idem-direct-send",
+        channel: "telegram",
+        to: "123456",
+      }),
+    );
+  });
+
   it("recovers telegram plugin resolution so message/send does not fail with Unknown channel: telegram", async () => {
     const telegramPlugin = {
       outbound: { deliveryMode: "direct" },

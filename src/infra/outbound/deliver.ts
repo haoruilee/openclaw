@@ -224,6 +224,8 @@ type DeliverOutboundPayloadsCoreParams = {
   cfg: OpenClawConfig;
   channel: Exclude<OutboundChannel, "none">;
   to: string;
+  /** Stable caller-supplied identity for retries of the same logical send. */
+  logicalSendKey?: string;
   accountId?: string;
   payloads: ReplyPayload[];
   replyToId?: string | null;
@@ -472,6 +474,7 @@ export async function deliverOutboundPayloads(
     : await enqueueDelivery({
         channel,
         to,
+        logicalSendKey: params.logicalSendKey,
         accountId: params.accountId,
         payloads,
         threadId: params.threadId,
