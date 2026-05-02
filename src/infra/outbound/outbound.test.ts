@@ -429,9 +429,7 @@ describe("delivery-queue", () => {
         },
         tmpDir,
       );
-      const deliver = vi
-        .fn()
-        .mockRejectedValue(new Error("400 Bad Request: message is too long"));
+      const deliver = vi.fn().mockRejectedValue(new Error("400 Bad Request: message is too long"));
       const log = createLog();
 
       const { result } = await runRecovery({ deliver, log });
