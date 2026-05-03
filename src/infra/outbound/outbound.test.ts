@@ -138,6 +138,34 @@ describe("delivery-queue", () => {
         retryCount: 0,
       });
     });
+
+    it("uses unique temp files when concurrent logical-key enqueues overlap", async () => {
+      const params = {
+        channel: "telegram" as const,
+        to: "123",
+        logicalSendKey: "send:idem-concurrent",
+        payloads: [{ text: "hello" }],
+      };
+
+      const ids = await Promise.all([
+        enqueueDelivery(params, tmpDir),
+        enqueueDelivery(params, tmpDir),
+        enqueueDelivery(params, tmpDir),
+      ]);
+
+      expect(new Set(ids)).toEqual(new Set([ids[0]]));
+
+      const queueDir = path.join(tmpDir, "delivery-queue");
+      const files = fs.readdirSync(queueDir).filter((f) => f.endsWith(".json"));
+      expect(files).toEqual([`${ids[0]}.json`]);
+
+      const entry = JSON.parse(fs.readFileSync(path.join(queueDir, files[0]), "utf-8"));
+      expect(entry).toMatchObject({
+        id: ids[0],
+        logicalSendKey: "send:idem-concurrent",
+        retryCount: 0,
+      });
+    });
   });
 
   describe("failDelivery", () => {
