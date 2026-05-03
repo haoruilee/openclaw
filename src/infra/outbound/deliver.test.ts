@@ -288,6 +288,25 @@ describe("deliverOutboundPayloads", () => {
     );
   });
 
+  it("passes logicalSendKey through to enqueueDelivery", async () => {
+    const sendTelegram = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
+
+    await deliverOutboundPayloads({
+      cfg: telegramChunkConfig,
+      channel: "telegram",
+      to: "123",
+      payloads: [{ text: "hi" }],
+      deps: { sendTelegram },
+      logicalSendKey: "send:idem-123",
+    });
+
+    expect(queueMocks.enqueueDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logicalSendKey: "send:idem-123",
+      }),
+    );
+  });
+
   it("preserves HTML text for telegram sendPayload channelData path", async () => {
     const sendTelegram = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
 

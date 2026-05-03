@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReplyPayload } from "../../auto-reply/types.js";
@@ -28,6 +29,8 @@ type DeliveryMirrorPayload = {
 type QueuedDeliveryPayload = {
   channel: Exclude<OutboundChannel, "none">;
   to: string;
+  /** Stable caller-supplied identity for retries of the same logical send. */
+  logicalSendKey?: string;
   accountId?: string;
   /**
    * Original payloads before plugin hooks. On recovery, hooks re-run on these
@@ -78,17 +81,71 @@ export async function ensureQueueDir(stateDir?: string): Promise<string> {
 /** Persist a delivery entry to disk before attempting send. Returns the entry ID. */
 type QueuedDeliveryParams = QueuedDeliveryPayload;
 
+function resolveQueuedDeliveryId(logicalSendKey?: string): string {
+  if (!logicalSendKey) {
+    return generateSecureUuid();
+  }
+  const digest = createHash("sha256").update(logicalSendKey).digest("hex");
+  return `logical-${digest}`;
+}
+
+function resolveQueuedDeliveryTempPath(filePath: string): string {
+  return `${filePath}.${process.pid}.${generateSecureUuid()}.tmp`;
+}
+
+async function unlinkIfExists(filePath: string): Promise<void> {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : null;
+    if (code !== "ENOENT") {
+      throw err;
+    }
+  }
+}
+
+async function writeQueueFileAtomically(filePath: string, json: string): Promise<void> {
+  const tmp = resolveQueuedDeliveryTempPath(filePath);
+  await fs.promises.writeFile(tmp, json, { encoding: "utf-8", mode: 0o600 });
+  await fs.promises.rename(tmp, filePath);
+}
+
+async function createQueueFileExclusively(filePath: string, json: string): Promise<boolean> {
+  const tmp = resolveQueuedDeliveryTempPath(filePath);
+  try {
+    await fs.promises.writeFile(tmp, json, { encoding: "utf-8", mode: 0o600 });
+    await fs.promises.link(tmp, filePath);
+    return true;
+  } catch (err) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : null;
+    if (code === "EEXIST") {
+      return false;
+    }
+    throw err;
+  } finally {
+    await unlinkIfExists(tmp);
+  }
+}
+
 export async function enqueueDelivery(
   params: QueuedDeliveryParams,
   stateDir?: string,
 ): Promise<string> {
   const queueDir = await ensureQueueDir(stateDir);
-  const id = generateSecureUuid();
+  const id = resolveQueuedDeliveryId(params.logicalSendKey);
+  const filePath = path.join(queueDir, `${id}.json`);
   const entry: QueuedDelivery = {
     id,
     enqueuedAt: Date.now(),
     channel: params.channel,
     to: params.to,
+    logicalSendKey: params.logicalSendKey,
     accountId: params.accountId,
     payloads: params.payloads,
     threadId: params.threadId,
@@ -99,11 +156,12 @@ export async function enqueueDelivery(
     mirror: params.mirror,
     retryCount: 0,
   };
-  const filePath = path.join(queueDir, `${id}.json`);
-  const tmp = `${filePath}.${process.pid}.tmp`;
   const json = JSON.stringify(entry, null, 2);
-  await fs.promises.writeFile(tmp, json, { encoding: "utf-8", mode: 0o600 });
-  await fs.promises.rename(tmp, filePath);
+  if (params.logicalSendKey) {
+    await createQueueFileExclusively(filePath, json);
+    return id;
+  }
+  await writeQueueFileAtomically(filePath, json);
   return id;
 }
 
@@ -132,12 +190,7 @@ export async function failDelivery(id: string, error: string, stateDir?: string)
   entry.retryCount += 1;
   entry.lastAttemptAt = Date.now();
   entry.lastError = error;
-  const tmp = `${filePath}.${process.pid}.tmp`;
-  await fs.promises.writeFile(tmp, JSON.stringify(entry, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  await fs.promises.rename(tmp, filePath);
+  await writeQueueFileAtomically(filePath, JSON.stringify(entry, null, 2));
 }
 
 /** Load all pending delivery entries from the queue directory. */
@@ -171,12 +224,7 @@ export async function loadPendingDeliveries(stateDir?: string): Promise<QueuedDe
       const parsed = JSON.parse(raw) as QueuedDelivery;
       const { entry, migrated } = normalizeLegacyQueuedDeliveryEntry(parsed);
       if (migrated) {
-        const tmp = `${filePath}.${process.pid}.tmp`;
-        await fs.promises.writeFile(tmp, JSON.stringify(entry, null, 2), {
-          encoding: "utf-8",
-          mode: 0o600,
-        });
-        await fs.promises.rename(tmp, filePath);
+        await writeQueueFileAtomically(filePath, JSON.stringify(entry, null, 2));
       }
       entries.push(entry);
     } catch {
@@ -380,8 +428,11 @@ export { MAX_RETRIES };
 const PERMANENT_ERROR_PATTERNS: readonly RegExp[] = [
   /no conversation reference found/i,
   /chat not found/i,
+  /message is too long/i,
   /user not found/i,
+  /user is deactivated/i,
   /bot was blocked by the user/i,
+  /bot can'?t send messages to bots/i,
   /forbidden: bot was kicked/i,
   /chat_id is empty/i,
   /recipient is not a valid/i,
