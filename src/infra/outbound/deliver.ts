@@ -383,6 +383,8 @@ function collectPayloadMediaSources(plan: readonly OutboundPayloadPlan[]): strin
 export type DeliverOutboundPayloadsParams = DeliverOutboundPayloadsCoreParams & {
   /** @internal Skip write-ahead queue (used by crash-recovery to avoid re-enqueueing). */
   skipQueue?: boolean;
+  /** Stable identity for retries of the same logical direct send. */
+  logicalSendKey?: string;
 };
 
 type MessageSentEvent = {
@@ -837,6 +839,7 @@ export async function deliverOutboundPayloads(
     : await enqueueDelivery({
         channel,
         to,
+        logicalSendKey: params.logicalSendKey,
         accountId: params.accountId,
         payloads,
         threadId: params.threadId,

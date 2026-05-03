@@ -291,6 +291,7 @@ export async function sendMessage(params: MessageSendParams): Promise<MessageSen
       channel: outboundChannel,
       to: resolvedTarget.to,
       session: outboundSession,
+      logicalSendKey: params.idempotencyKey,
       accountId: params.accountId,
       payloads: normalizedPayloads,
       replyToId: params.replyToId,

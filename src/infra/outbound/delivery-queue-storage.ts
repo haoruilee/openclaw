@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReplyPayload } from "../../auto-reply/types.js";
@@ -15,6 +16,8 @@ const FAILED_DIRNAME = "failed";
 export type QueuedDeliveryPayload = {
   channel: Exclude<OutboundChannel, "none">;
   to: string;
+  /** Stable caller-supplied identity for retries of the same logical send. */
+  logicalSendKey?: string;
   accountId?: string;
   /**
    * Original payloads before plugin hooks. On recovery, hooks re-run on these
@@ -83,12 +86,20 @@ async function unlinkBestEffort(filePath: string): Promise<void> {
 }
 
 async function writeQueueEntry(filePath: string, entry: QueuedDelivery): Promise<void> {
-  const tmp = `${filePath}.${process.pid}.tmp`;
+  const tmp = `${filePath}.${process.pid}.${generateSecureUuid()}.tmp`;
   await fs.promises.writeFile(tmp, JSON.stringify(entry, null, 2), {
     encoding: "utf-8",
     mode: 0o600,
   });
   await fs.promises.rename(tmp, filePath);
+}
+
+function resolveQueuedDeliveryId(logicalSendKey?: string): string {
+  if (!logicalSendKey) {
+    return generateSecureUuid();
+  }
+  const digest = createHash("sha256").update(logicalSendKey).digest("hex");
+  return `logical-${digest}`;
 }
 
 async function readQueueEntry(filePath: string): Promise<QueuedDelivery> {
@@ -136,12 +147,27 @@ export async function enqueueDelivery(
   stateDir?: string,
 ): Promise<string> {
   const queueDir = await ensureQueueDir(stateDir);
-  const id = generateSecureUuid();
-  await writeQueueEntry(path.join(queueDir, `${id}.json`), {
+  const id = resolveQueuedDeliveryId(params.logicalSendKey);
+  const filePath = path.join(queueDir, `${id}.json`);
+  if (params.logicalSendKey) {
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (stat.isFile()) {
+        return id;
+      }
+    } catch (err) {
+      const code = getErrnoCode(err);
+      if (code !== "ENOENT") {
+        throw err;
+      }
+    }
+  }
+  await writeQueueEntry(filePath, {
     id,
     enqueuedAt: Date.now(),
     channel: params.channel,
     to: params.to,
+    logicalSendKey: params.logicalSendKey,
     accountId: params.accountId,
     payloads: params.payloads,
     threadId: params.threadId,

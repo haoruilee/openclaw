@@ -116,6 +116,28 @@ describe("delivery-queue recovery", () => {
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("permanent error"));
   });
 
+  it("moves reported Telegram terminal errors to failed/ immediately", async () => {
+    const id = await enqueueDelivery(
+      {
+        channel: "telegram",
+        to: "123",
+        logicalSendKey: "send:telegram-too-long",
+        payloads: [{ text: "too long" }],
+      },
+      tmpDir(),
+    );
+    const deliver = vi.fn().mockRejectedValue(new Error("400 Bad Request: message is too long"));
+    const log = createRecoveryLog();
+
+    const { result } = await runRecovery({ deliver, log });
+
+    expect(result.failed).toBe(1);
+    expect(result.recovered).toBe(0);
+    expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
+    expect(fs.existsSync(path.join(tmpDir(), "delivery-queue", "failed", `${id}.json`))).toBe(true);
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("permanent error"));
+  });
+
   it("treats Matrix 'User not in room' as a permanent error", async () => {
     const id = await enqueueDelivery(
       { channel: "matrix", to: "!lowercased:matrix.example.com", payloads: [{ text: "hi" }] },

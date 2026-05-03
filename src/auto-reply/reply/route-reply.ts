@@ -242,6 +242,9 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
               agentId: resolvedAgentId,
               text,
               mediaUrls,
+              ...(params.messageId
+                ? { idempotencyKey: `${params.sessionKey}:reply:${params.messageId}` }
+                : {}),
               ...(params.isGroup != null ? { isGroup: params.isGroup } : {}),
               ...(params.groupId ? { groupId: params.groupId } : {}),
             }

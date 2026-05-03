@@ -77,6 +77,49 @@ describe("delivery-queue storage", () => {
       await expect(ackDelivery("nonexistent-id", tmpDir())).resolves.toBeUndefined();
     });
 
+    it("reuses a stable queue entry id for the same logical send key", async () => {
+      const params = {
+        channel: "forum" as const,
+        to: "123",
+        logicalSendKey: "send:idem-123",
+        payloads: [{ text: "hello" }],
+      };
+
+      const firstId = await enqueueTextDelivery(params, tmpDir());
+      const secondId = await enqueueTextDelivery(params, tmpDir());
+
+      expect(secondId).toBe(firstId);
+      expect(queueJsonFiles()).toEqual([`${firstId}.json`]);
+
+      const entry = readQueuedEntry(tmpDir(), firstId);
+      expect(entry).toMatchObject({
+        id: firstId,
+        logicalSendKey: "send:idem-123",
+        retryCount: 0,
+      });
+    });
+
+    it("uses unique temp files for concurrent same-key enqueues", async () => {
+      const params = {
+        channel: "forum" as const,
+        to: "123",
+        logicalSendKey: "send:idem-concurrent",
+        payloads: [{ text: "hello" }],
+      };
+
+      const ids = await Promise.all([
+        enqueueTextDelivery(params, tmpDir()),
+        enqueueTextDelivery(params, tmpDir()),
+        enqueueTextDelivery(params, tmpDir()),
+      ]);
+
+      expect(new Set(ids).size).toBe(1);
+      expect(queueJsonFiles()).toEqual([`${ids[0]}.json`]);
+
+      const strayTemps = fs.readdirSync(queueDir()).filter((file) => file.includes(".tmp"));
+      expect(strayTemps).toEqual([]);
+    });
+
     it.each([
       {
         name: "ack cleans up leftover .delivered marker when .json is already gone",

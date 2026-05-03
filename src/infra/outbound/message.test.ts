@@ -105,6 +105,24 @@ describe("sendMessage", () => {
     );
   });
 
+  it("passes explicit idempotencyKey to outbound delivery for direct sends", async () => {
+    await sendMessage({
+      cfg: {},
+      channel: "forum",
+      to: "123456",
+      content: "hi",
+      idempotencyKey: "idem-direct-send",
+    });
+
+    expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logicalSendKey: "idem-direct-send",
+        channel: "forum",
+        to: "123456",
+      }),
+    );
+  });
+
   it("forwards requesterSenderId into the outbound delivery session", async () => {
     await sendMessage({
       cfg: {},

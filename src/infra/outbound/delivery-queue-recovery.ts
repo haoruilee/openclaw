@@ -53,9 +53,12 @@ const BACKOFF_MS: readonly number[] = [
 const PERMANENT_ERROR_PATTERNS: readonly RegExp[] = [
   /no conversation reference found/i,
   /chat not found/i,
+  /message is too long/i,
   /user not found/i,
+  /user is deactivated/i,
   /bot.*not.*member/i,
   /bot was blocked by the user/i,
+  /bot can'?t send messages to bots/i,
   /forbidden: bot was kicked/i,
   /chat_id is empty/i,
   /recipient is not a valid/i,
